@@ -1,7 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Chrome Extension with React & Webpack",
-  "description": "A chrome extension boilerplate built with React 17, Webpack 5, and Webpack Dev Server 4",
+  "name": "Bocchi",
+  "description": "A chrome extension for novel translation using ChatGPT",
+  "permissions": ["storage"],
   "options_page": "options.html",
   "background": { "service_worker": "background.bundle.js" },
   "action": {
@@ -16,7 +17,7 @@
   },
   "content_scripts": [
     {
-      "matches": ["http://*/*", "https://*/*", "<all_urls>"],
+      "matches": ["https://chat.openai.com/*"],
       "js": ["contentScript.bundle.js"],
       "css": ["content.styles.css"]
     }
