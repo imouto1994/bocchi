@@ -1,11 +1,17 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 
+import { Input } from './Input';
+import { Textarea } from './Textarea';
+import {
+  fetchAllConversations,
+  fetchMostRecentConversation,
+  fetchConversationContent,
+  patchConversationTitle,
+} from './modules/api';
 import { useSettings } from '../../storage/setting';
 import { useChapters } from '../../storage/chapter';
 import { useLog } from '../../storage/log';
-
-const TRANSLATE_QUOTA = 25;
 
 function getTextInputElement() {
   const textInputElement = document.querySelector(
@@ -65,12 +71,56 @@ function getNewChatButton() {
   return getLink('New chat');
 }
 
+function getShowMoreButton() {
+  return getButton('Show more');
+}
+
+function getUseDefaultModelButton() {
+  return getButton('Use default model');
+}
+
+function getTryAgainButton() {
+  return getButton('Try again');
+}
+
 function getPendingButton() {
   return getButton('Stop generating');
 }
 
 function getGPT4Option() {
   return getListItem('GPT-4');
+}
+
+function parseEntries(conversationContent) {
+  const { mapping } = conversationContent;
+  const entries = Object.values(mapping);
+  const rootEntry = entries.find((entry) => entry.parent == null);
+  let officialEntries = [];
+  function dfs(entry, currentPath) {
+    currentPath.push(entry);
+    if (entry.children.length === 0) {
+      if (
+        officialEntries.length < currentPath.length ||
+        (officialEntries.length === currentPath.length &&
+          entry.message &&
+          entry.message.end_turn)
+      ) {
+        officialEntries = [...currentPath];
+      }
+    } else {
+      for (const childEntryId of entry.children) {
+        dfs(mapping[childEntryId], currentPath);
+      }
+    }
+    currentPath.pop();
+  }
+  dfs(rootEntry, ['']);
+
+  return officialEntries
+    .filter(
+      (entry) => entry.message && entry.message.author.role === 'assistant'
+    )
+    .map((entry) => entry.message.content.parts.join('\n\n\n'));
 }
 
 function setNativeValue(element, value) {
@@ -116,17 +166,49 @@ function waitPendingButtonDisappear() {
   });
 }
 
+function waitUseDefaultModelButtonAppear() {
+  return new Promise((resolve) => {
+    if (getUseDefaultModelButton() != null) {
+      resolve('Use default model');
+      return;
+    }
+    let intervalId;
+    intervalId = setInterval(() => {
+      if (getUseDefaultModelButton() != null) {
+        clearInterval(intervalId);
+        resolve('Use default model');
+      }
+    }, 1000);
+  });
+}
+
+function waitTryAgainButtonAppear() {
+  return new Promise((resolve) => {
+    if (getTryAgainButton() != null) {
+      resolve('Try again');
+      return;
+    }
+    let intervalId;
+    intervalId = setInterval(() => {
+      if (getTryAgainButton() != null) {
+        clearInterval(intervalId);
+        resolve('Try again');
+      }
+    }, 1000);
+  });
+}
+
 function waitPendingButtonAppear() {
   return new Promise((resolve) => {
     if (getPendingButton() != null) {
-      resolve();
+      resolve('Pending');
       return;
     }
     let intervalId;
     intervalId = setInterval(() => {
       if (getPendingButton() != null) {
         clearInterval(intervalId);
-        resolve();
+        resolve('Pending');
       }
     }, 1000);
   });
@@ -134,84 +216,130 @@ function waitPendingButtonAppear() {
 
 async function translateGroup(groupText) {
   await waitPendingButtonDisappear();
-  console.log('SETTING TEXT...');
   setText(getTextInputElement(), groupText);
   await waitFor(3000);
-  console.log('SUBMITTING...');
   getSubmitButtonElement().click();
-  await waitPendingButtonAppear();
-  await waitPendingButtonDisappear();
+  const raceResult = await Promise.race([
+    waitPendingButtonAppear(),
+    waitUseDefaultModelButtonAppear(),
+  ]);
+  if (raceResult === 'Pending') {
+    await waitPendingButtonDisappear();
+  } else {
+    await waitTryAgainButtonAppear();
+    await waitFor(60000);
+    getTryAgainButton().click();
+    await waitPendingButtonAppear();
+    await waitPendingButtonDisappear();
+  }
 }
 
 function useTranslate({
   initialPrompt,
   followUpPrompt,
   groupCharLimit,
-  chapter,
-  translateCount,
   addTranslateTimestamp,
   setChapterTranslated,
+  setChapterUuid,
 }) {
-  const segmentedGroups = useMemo(() => {
-    const lines = (chapter?.content || '')
-      .split('\n')
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0);
-    const groups = [];
-    let currentGroupLines = [];
-    let currentLength = 0;
-    for (const line of lines) {
-      if (currentLength === 0 || currentLength + line.length < groupCharLimit) {
-        currentGroupLines.push(line);
-        currentLength += line.length;
-        continue;
+  const segment = useCallback(
+    (chapter) => {
+      if (chapter == null) {
+        return [];
+      }
+      const lines = (chapter.content || '')
+        .split('\n')
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+      const groups = [];
+      let currentGroupLines = [];
+      let currentLength = 0;
+      for (const line of lines) {
+        if (
+          currentLength === 0 ||
+          currentLength + line.length < groupCharLimit
+        ) {
+          currentGroupLines.push(line);
+          currentLength += line.length;
+          continue;
+        }
+
+        groups.push(currentGroupLines);
+        currentGroupLines = [line];
+        currentLength = line.length;
+      }
+      if (currentGroupLines.length > 0) {
+        groups.push(currentGroupLines);
       }
 
-      groups.push(currentGroupLines);
-      currentGroupLines = [line];
-      currentLength = line.length;
-    }
-    if (currentGroupLines.length > 0) {
-      groups.push(currentGroupLines);
-    }
-
-    return groups.map((lines) => lines.join('\n'));
-  }, [chapter, groupCharLimit]);
-
-  const isTranslateEligible = useMemo(
-    () => segmentedGroups.length + translateCount <= TRANSLATE_QUOTA,
-    [translateCount, segmentedGroups.length]
+      return groups.map((lines) => lines.join('\n'));
+    },
+    [groupCharLimit]
   );
 
-  const translate = useCallback(async () => {
-    console.log(getNewChatButton());
-    getNewChatButton().click();
-    await waitFor(3000);
-    getModelDropdownButton().click();
-    await waitFor(1000);
-    getGPT4Option().click();
-    await waitFor(1000);
-    for (let i = 0; i < segmentedGroups.length; i++) {
-      const prompt = i === 0 ? initialPrompt : followUpPrompt;
-      const groupText = `${prompt}\n${segmentedGroups[i]}`;
-      await translateGroup(groupText);
-      addTranslateTimestamp();
-      await waitFor(3000);
-    }
-    setChapterTranslated(chapter?.id, true);
-  }, [
-    initialPrompt,
-    followUpPrompt,
-    segmentedGroups,
-    chapter,
-    addTranslateTimestamp,
-    setChapterTranslated,
-  ]);
+  const translate = useCallback(
+    async (chapter) => {
+      if (chapter == null) {
+        return;
+      }
+      if (chapter.translated) {
+        return;
+      }
+      const segmentedGroups = segment(chapter);
+      let segmentStartIndex = 0;
+      if (chapter.uuid == null) {
+        getNewChatButton().click();
+        await waitFor(3000);
+        getModelDropdownButton().click();
+        await waitFor(1000);
+        getGPT4Option().click();
+        await waitFor(1000);
+      } else {
+        while (getShowMoreButton() != null) {
+          getShowMoreButton().click();
+        }
+        const chapterLinkButton = getLink(chapter.title);
+        chapterLinkButton.click();
+        await waitFor(3000);
+        const conversationContent = await fetchConversationContent(
+          chapter.uuid
+        );
+        const parsedConversationEntries = parseEntries(conversationContent);
+        segmentStartIndex = parsedConversationEntries.length;
+      }
+
+      for (let i = segmentStartIndex; i < segmentedGroups.length; i++) {
+        const isInitial = i === 0;
+        const prompt = isInitial ? initialPrompt : followUpPrompt;
+        const groupText = `${prompt}\n${segmentedGroups[i]}`;
+
+        await translateGroup(groupText);
+        if (isInitial && chapter.uuid == null) {
+          const mostRecentConversation = await fetchMostRecentConversation();
+          setChapterUuid(chapter.id, mostRecentConversation.id);
+          await patchConversationTitle(
+            mostRecentConversation.id,
+            chapter.title
+          );
+        }
+        addTranslateTimestamp();
+        await waitFor(3000);
+      }
+      setChapterTranslated(chapter.id, true);
+    },
+    [
+      initialPrompt,
+      followUpPrompt,
+      addTranslateTimestamp,
+      setChapterTranslated,
+      segment,
+      setChapterUuid,
+    ]
+  );
 
   return {
     translate,
-    minimumAttempts: segmentedGroups.length,
-    isTranslateEligible,
+    segment,
   };
 }
 
@@ -232,9 +360,11 @@ function Main() {
     mostRecentlyUpdatedChapterId,
     addNewChapter,
     deleteChapter,
+    deleteAllChapters,
     setChapterTitle,
     setChapterContent,
     setChapterTranslated,
+    setChapterUuid,
   } = useChapters();
   const [selectedChapterId, setSelectedChapterId] = useState(
     mostRecentlyUpdatedChapterId
@@ -248,15 +378,18 @@ function Main() {
     [chapterById, selectedChapterId]
   );
 
-  const { translate, isTranslateEligible, minimumAttempts } = useTranslate({
+  const { translate, segment } = useTranslate({
     initialPrompt,
     followUpPrompt,
     groupCharLimit,
-    chapter: selectedChapter,
-    translateCount,
     addTranslateTimestamp,
     setChapterTranslated,
+    setChapterUuid,
   });
+
+  const selectedChapterSegmentedGroups = useMemo(() => {
+    return segment(selectedChapter);
+  }, [segment, selectedChapter]);
 
   useEffect(() => {
     setSelectedChapterId(mostRecentlyUpdatedChapterId);
@@ -272,49 +405,135 @@ function Main() {
     };
   }, [refreshTimestamps]);
 
+  // Handler for clicking floating action button to toggle tray
   const handleBocchiButtonClick = useCallback(() => {
     setTrayEnabled((flag) => !flag);
   }, [setTrayEnabled]);
 
+  // Handler for text change of 'Initial Prompt' input
   const handleInitialPromptInputChange = useCallback(
     (e) => {
       setInitialPrompt(e.target.value);
     },
     [setInitialPrompt]
   );
+
+  // Handler for text change of 'Follow-up Prompt' input
   const handleFollowUpPromptInputChange = useCallback(
     (e) => {
       setFollowUpPrompt(e.target.value);
     },
     [setFollowUpPrompt]
   );
+
+  // Handler for number change of the character limit of each segment group
   const handleGroupCharLimitInputChange = useCallback(
     (e) => {
       setGroupCharLimitStr(e.target.value);
     },
     [setGroupCharLimitStr]
   );
+
+  // Handler for clicking button to start translation queue
+  const handleTranslateQueueButtonClick = useCallback(async () => {
+    for (const chapterId of sortedChapterIds) {
+      const chapter = chapterById[chapterId];
+      await translate(chapter);
+    }
+  }, [sortedChapterIds, chapterById, translate]);
+
+  // Handler for clicking button to add a new chapter
   const handleAddNewChapterButtonClick = useCallback(() => {
     addNewChapter();
   }, [addNewChapter]);
+
+  // Handler for clicking button to export all existing conversations
+  const handleExportAllButtonClick = useCallback(async () => {
+    const conversations = await fetchAllConversations();
+    for (const conversation of conversations) {
+      const conversationContent = await fetchConversationContent(
+        conversation.id
+      );
+      const parsedConversationEntries = parseEntries(conversationContent);
+      const parsedConversationContent =
+        parsedConversationEntries.join('\n\n\n');
+      // Create element with <a> tag
+      const link = document.createElement('a');
+
+      // Create a blog object with the file content which you want to add to the file
+      const file = new Blob([parsedConversationContent], {
+        type: 'text/plain',
+      });
+
+      // Add file content in the object URL
+      link.href = URL.createObjectURL(file);
+
+      // Add file name
+      link.download = `${conversation.title} - ${conversation.id}.txt`;
+
+      // Add click event to <a> tag to save file.
+      link.click();
+      URL.revokeObjectURL(link.href);
+      await waitFor(2000);
+    }
+  }, []);
+
+  // Handler for clicking button to import chapters from local TXT files
+  const handleImportButtonClick = useCallback(async () => {
+    const fileHandles = await window.showOpenFilePicker({
+      multiple: true,
+      types: [
+        {
+          description: 'Text',
+          accept: {
+            'text/plain': ['.txt'],
+          },
+        },
+      ],
+      excludeAcceptAllOption: true,
+    });
+    for (const fileHandle of fileHandles) {
+      const file = await fileHandle.getFile();
+      const content = await file.text();
+      addNewChapter({
+        title: file.name,
+        content,
+      });
+    }
+  }, [addNewChapter]);
+
+  // Handler for clicking button to delete all chapters
+  const handleDeleteAllButtonClick = useCallback(() => {
+    deleteAllChapters();
+  }, [deleteAllChapters]);
+
+  // Handler for clicking button to delete currently selected chapter
   const handleDeleteChapterButtonClick = useCallback(() => {
     deleteChapter(selectedChapterId);
   }, [deleteChapter, selectedChapterId]);
+
+  // Handler for clicking button to translate currently selected chapter
   const handleTranslateChapterButtonClick = useCallback(() => {
-    translate();
-  }, [translate]);
+    translate(selectedChapter);
+  }, [translate, selectedChapter]);
+
+  // Handler for changing the currently selected chapter
   const handleChapterSelectChange = useCallback(
     (e) => {
       setSelectedChapterId(e.target.value);
     },
     [setSelectedChapterId]
   );
+
+  // Handler for changing the title of currently selected chapter
   const handleChapterTitleInputChange = useCallback(
     (e) => {
       setChapterTitle(selectedChapterId, e.target.value);
     },
     [selectedChapterId, setChapterTitle]
   );
+
+  // Handler for changing the content of currently selected chapter
   const handleChapterContentInputChange = useCallback(
     (e) => {
       setChapterContent(selectedChapterId, e.target.value);
@@ -332,87 +551,121 @@ function Main() {
       </button>
       {trayEnabled ? (
         <div className="bocchi-tray">
-          <p>
-            <strong>{`Translate Count: ${translateCount}`}</strong>
-          </p>
-          <p>Initial Prompt</p>
-          <input
-            className="bocchi-input"
-            value={initialPrompt}
-            onChange={handleInitialPromptInputChange}
-          />
-          <p>Follow-up Prompt</p>
-          <input
-            className="bocchi-input"
-            value={followUpPrompt}
-            onChange={handleFollowUpPromptInputChange}
-          />
-          <p>Group Char Limit</p>
-          <input
-            className="bocchi-input"
-            type="number"
-            value={groupCharLimitStr}
-            onChange={handleGroupCharLimitInputChange}
-          />
-          <button
-            className="bocchi-button bocchi-button-add"
-            onClick={handleAddNewChapterButtonClick}
-          >
-            Add new chapter
-          </button>
-          {sortedChapterIds.length > 0 && selectedChapter != null ? (
-            <>
-              <p>Currently Selected</p>
-              <select
-                className="bocchi-select"
-                value={selectedChapterId}
-                onChange={handleChapterSelectChange}
-              >
-                {sortedChapterIds.map((id) => {
-                  return (
-                    <option value={id} key={id}>
-                      {chapterById[id].title}
-                    </option>
-                  );
-                })}
-              </select>
-              <p>{`Minimum Attempts: ${minimumAttempts}`}</p>
-              <p>Title</p>
-              <input
-                className="bocchi-input"
-                value={selectedChapter.title}
-                onChange={handleChapterTitleInputChange}
-              />
-              <p>Content</p>
-              <textarea
-                className="bocchi-textarea"
-                value={selectedChapter.content}
-                onChange={handleChapterContentInputChange}
-              />
-              {!selectedChapter.translated && isTranslateEligible ? (
-                <button
-                  className="bocchi-button bocchi-button-translate"
-                  onClick={handleTranslateChapterButtonClick}
+          <div className="bocchi-tray-column">
+            <p>
+              <strong>{`Translate Count: ${translateCount}`}</strong>
+            </p>
+            <p>Initial Prompt</p>
+            <Textarea
+              className="bocchi-textarea"
+              value={initialPrompt}
+              onChange={handleInitialPromptInputChange}
+              rows={5}
+            />
+            <p>Follow-up Prompt</p>
+            <Textarea
+              className="bocchi-textarea"
+              value={followUpPrompt}
+              onChange={handleFollowUpPromptInputChange}
+              rows={5}
+            />
+            <p>Group Char Limit</p>
+            <Input
+              className="bocchi-input"
+              type="number"
+              value={groupCharLimitStr}
+              onChange={handleGroupCharLimitInputChange}
+            />
+            <button
+              className="bocchi-button bocchi-button-primary"
+              onClick={handleTranslateQueueButtonClick}
+            >
+              Start translate queue
+            </button>
+            <button
+              className="bocchi-button bocchi-button-secondary"
+              onClick={handleAddNewChapterButtonClick}
+            >
+              Add new chapter
+            </button>
+            <button
+              className="bocchi-button bocchi-button-secondary"
+              onClick={handleExportAllButtonClick}
+            >
+              Export All
+            </button>
+            <button
+              className="bocchi-button bocchi-button-secondary"
+              onClick={handleImportButtonClick}
+            >
+              Import
+            </button>
+            <button
+              className="bocchi-button bocchi-button-error"
+              onClick={handleDeleteAllButtonClick}
+            >
+              Delete All
+            </button>
+          </div>
+          <div className="bocchi-tray-column">
+            {sortedChapterIds.length > 0 && selectedChapter != null ? (
+              <>
+                <p>Currently Selected</p>
+                <select
+                  className="bocchi-select"
+                  value={selectedChapterId}
+                  onChange={handleChapterSelectChange}
                 >
-                  Translate Chapter
+                  {sortedChapterIds.map((id) => {
+                    return (
+                      <option value={id} key={id}>
+                        {chapterById[id].title}
+                      </option>
+                    );
+                  })}
+                </select>
+                <p>{`Minimum Attempts: ${selectedChapterSegmentedGroups.length}`}</p>
+                <br />
+                <p>UUID</p>
+                <Input
+                  className="bocchi-input"
+                  value={selectedChapter.uuid}
+                  disabled
+                />
+                <p>Title</p>
+                <Input
+                  className="bocchi-input"
+                  value={selectedChapter.title}
+                  onChange={handleChapterTitleInputChange}
+                />
+                <p>Content</p>
+                <Textarea
+                  className="bocchi-textarea"
+                  value={selectedChapter.content}
+                  onChange={handleChapterContentInputChange}
+                  rows={10}
+                />
+                {!selectedChapter.translated ? (
+                  <button
+                    className="bocchi-button bocchi-button-primary"
+                    onClick={handleTranslateChapterButtonClick}
+                  >
+                    Translate Chapter
+                  </button>
+                ) : (
+                  <button className="bocchi-button bocchi-button-disabled">
+                    Translated
+                  </button>
+                )}
+                <button
+                  className="bocchi-button bocchi-button-error"
+                  onClick={handleDeleteChapterButtonClick}
+                >
+                  Delete chapter
                 </button>
-              ) : !isTranslateEligible ? (
-                <button className="bocchi-button bocchi-button-disabled">
-                  Not enough quota
-                </button>
-              ) : (
-                <button className="bocchi-button bocchi-button-disabled">
-                  Translated
-                </button>
-              )}
-              <button
-                className="bocchi-button bocchi-button-remove"
-                onClick={handleDeleteChapterButtonClick}
-              >
-                Delete chapter
-              </button>
-            </>
-          ) : null}
+              </>
+            ) : null}
+          </div>
         </div>
       ) : null}
     </div>

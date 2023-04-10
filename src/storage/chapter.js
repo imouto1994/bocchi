@@ -41,100 +41,154 @@ export function useChapters() {
     return sortedChapters[0].id;
   }, [chapterById]);
 
-  const addNewChapter = useCallback(() => {
-    const id = getRandomString(12);
-    const newChapter = {
-      id,
-      title: 'New Chapter',
-      content: '',
-      translated: false,
-      updatedAt: Date.now(),
-    };
-    const newChapterById = {
-      ...chapterById,
-      [id]: newChapter,
-    };
+  const addNewChapter = useCallback(
+    ({ title, content } = {}) => {
+      setStore((prev) => {
+        const prevChapterById = JSON.parse(prev.chaptersJSON);
+        const id = getRandomString(12);
+        const newChapter = {
+          id,
+          uuid: null,
+          title: `${title || 'New Chapter'} [${id}]`,
+          content: content || '',
+          translated: false,
+          updatedAt: Date.now(),
+        };
+        const newChapterById = {
+          ...prevChapterById,
+          [id]: newChapter,
+        };
+
+        return {
+          ...prev,
+          chaptersJSON: JSON.stringify(newChapterById),
+        };
+      });
+    },
+    [setStore]
+  );
+  const deleteAllChapters = useCallback(() => {
     setStore((prev) => ({
       ...prev,
-      chaptersJSON: JSON.stringify(newChapterById),
+      chaptersJSON: JSON.stringify({}),
     }));
-  }, [chapterById, setStore]);
-
+  }, [setStore]);
   const deleteChapter = useCallback(
     (chapterId) => {
-      const newChapterById = { ...chapterById };
-      delete newChapterById[chapterId];
-      setStore((prev) => ({
-        ...prev,
-        chaptersJSON: JSON.stringify(newChapterById),
-      }));
+      setStore((prev) => {
+        const prevChapterById = JSON.parse(prev.chaptersJSON);
+        const newChapterById = { ...prevChapterById };
+        delete newChapterById[chapterId];
+
+        return {
+          ...prev,
+          chaptersJSON: JSON.stringify(newChapterById),
+        };
+      });
     },
-    [chapterById, setStore]
+    [setStore]
   );
   const setChapterTitle = useCallback(
     (chapterId, newTitle) => {
-      const chapter = chapterById[chapterId];
-      if (chapter == null) {
-        return;
-      }
-      const newChapter = {
-        ...chapter,
-        title: newTitle,
-        updatedAt: Date.now(),
-      };
-      const newChapterById = {
-        ...chapterById,
-        [newChapter.id]: newChapter,
-      };
-      setStore((prev) => ({
-        ...prev,
-        chaptersJSON: JSON.stringify(newChapterById),
-      }));
+      setStore((prev) => {
+        const prevChapterById = JSON.parse(prev.chaptersJSON);
+        const chapter = prevChapterById[chapterId];
+        if (chapter == null) {
+          return prev;
+        }
+        const newChapter = {
+          ...chapter,
+          title: newTitle,
+          updatedAt: Date.now(),
+        };
+        const newChapterById = {
+          ...prevChapterById,
+          [newChapter.id]: newChapter,
+        };
+
+        return {
+          ...prev,
+          chaptersJSON: JSON.stringify(newChapterById),
+        };
+      });
     },
-    [chapterById, setStore]
+    [setStore]
   );
   const setChapterContent = useCallback(
     (chapterId, newContent) => {
-      const chapter = chapterById[chapterId];
-      if (chapter == null) {
-        return;
-      }
-      const newChapter = {
-        ...chapter,
-        content: newContent,
-        updatedAt: Date.now(),
-      };
-      const newChapterById = {
-        ...chapterById,
-        [newChapter.id]: newChapter,
-      };
-      setStore((prev) => ({
-        ...prev,
-        chaptersJSON: JSON.stringify(newChapterById),
-      }));
+      setStore((prev) => {
+        const prevChapterById = JSON.parse(prev.chaptersJSON);
+        const chapter = prevChapterById[chapterId];
+        if (chapter == null) {
+          return prev;
+        }
+        const newChapter = {
+          ...chapter,
+          content: newContent,
+          updatedAt: Date.now(),
+        };
+        const newChapterById = {
+          ...prevChapterById,
+          [newChapter.id]: newChapter,
+        };
+
+        return {
+          ...prev,
+          chaptersJSON: JSON.stringify(newChapterById),
+        };
+      });
     },
-    [chapterById, setStore]
+    [setStore]
   );
   const setChapterTranslated = useCallback(
     (chapterId, newTranslatedFlag) => {
-      const chapter = chapterById[chapterId];
-      if (chapter == null) {
-        return;
-      }
-      const newChapter = {
-        ...chapter,
-        translated: newTranslatedFlag,
-      };
-      const newChapterById = {
-        ...chapterById,
-        [newChapter.id]: newChapter,
-      };
-      setStore((prev) => ({
-        ...prev,
-        chaptersJSON: JSON.stringify(newChapterById),
-      }));
+      setStore((prev) => {
+        const prevChapterById = JSON.parse(prev.chaptersJSON);
+        const chapter = prevChapterById[chapterId];
+        if (chapter == null) {
+          return prev;
+        }
+        const newChapter = {
+          ...chapter,
+          translated: newTranslatedFlag,
+        };
+        const newChapterById = {
+          ...prevChapterById,
+          [newChapter.id]: newChapter,
+        };
+
+        return {
+          ...prev,
+          chaptersJSON: JSON.stringify(newChapterById),
+        };
+      });
     },
-    [chapterById, setStore]
+    [setStore]
+  );
+  const setChapterUuid = useCallback(
+    (chapterId, newUuid) => {
+      setStore((prev) => {
+        const prevChapterById = JSON.parse(prev.chaptersJSON);
+        const chapter = prevChapterById[chapterId];
+        if (chapter == null) {
+          return prev;
+        }
+        const newChapter = {
+          ...chapter,
+          uuid: newUuid,
+        };
+        const newChapterById = {
+          ...prevChapterById,
+          [newChapter.id]: newChapter,
+        };
+
+        return {
+          ...prev,
+          chaptersJSON: JSON.stringify(newChapterById),
+        };
+      });
+    },
+    [setStore]
   );
 
   return {
@@ -143,8 +197,10 @@ export function useChapters() {
     mostRecentlyUpdatedChapterId,
     addNewChapter,
     deleteChapter,
+    deleteAllChapters,
     setChapterTitle,
     setChapterContent,
     setChapterTranslated,
+    setChapterUuid,
   };
 }

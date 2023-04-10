@@ -18,22 +18,20 @@ export function useLog() {
   );
 
   const addTranslateTimestamp = useCallback(() => {
-    const newTimestamps = [...translateTimestamps, Date.now()];
     setStore((prev) => ({
       ...prev,
-      translateTimestamps: newTimestamps,
+      translateTimestamps: [...prev.translateTimestamps, Date.now()],
     }));
-  }, [translateTimestamps, setStore]);
+  }, [setStore]);
 
   const refreshTimestamps = useCallback(() => {
-    const newTimestamps = translateTimestamps.filter(
-      (timestamp) => Date.now() - timestamp < COOLDOWN_DURATION_MS
-    );
     setStore((prev) => ({
       ...prev,
-      translateTimestamps: newTimestamps,
+      translateTimestamps: prev.translateTimestamps.filter(
+        (timestamp) => Date.now() - timestamp < COOLDOWN_DURATION_MS
+      ),
     }));
-  }, [translateTimestamps, setStore]);
+  }, [setStore]);
 
   return {
     translateCount,

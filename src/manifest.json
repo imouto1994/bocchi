@@ -2,15 +2,13 @@
   "manifest_version": 3,
   "name": "Bocchi",
   "description": "A chrome extension for novel translation using ChatGPT",
-  "permissions": ["storage"],
+  "host_permissions": ["*://*.openai.com/*"],
+  "permissions": ["storage", "cookies"],
   "options_page": "options.html",
   "background": { "service_worker": "background.bundle.js" },
   "action": {
     "default_popup": "popup.html",
     "default_icon": "icon-34.png"
-  },
-  "chrome_url_overrides": {
-    "newtab": "newtab.html"
   },
   "icons": {
     "128": "icon-128.png"
