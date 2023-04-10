@@ -12,6 +12,7 @@ import {
 import { useSettings } from '../../storage/setting';
 import { useChapters } from '../../storage/chapter';
 import { useLog } from '../../storage/log';
+import { getOrdinalNumberString } from '../../utils/string';
 
 function getTextInputElement() {
   const textInputElement = document.querySelector(
@@ -365,7 +366,10 @@ function useTranslate({
         );
         const isInitial = i === 0;
         const prompt = isInitial ? initialPrompt : followUpPrompt;
-        const groupText = `${prompt}\n${segmentedGroups[i]}`;
+        const groupText = `${prompt.replace(
+          '{segmentNumber}',
+          getOrdinalNumberString(i + 1)
+        )}\n${segmentedGroups[i]}`;
         await translateGroup(groupText);
         if (isInitial && chapter.uuid == null) {
           const mostRecentConversation = await fetchMostRecentConversation();

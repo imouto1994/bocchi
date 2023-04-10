@@ -1,12 +1,38 @@
+function waitFor(duration) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, duration);
+  });
+}
+
+async function fetchWithRetry(url, options) {
+  for (let i = 0; i < 5; i++) {
+    try {
+      const response = await fetch(url, options);
+      if (!response.ok) {
+        throw new Error('HTTP Error Status Code');
+      }
+      return response;
+    } catch (err) {
+      if (i === 4) {
+        throw err;
+      } else {
+        await waitFor(5000);
+      }
+    }
+  }
+}
+
 async function getAuthToken() {
-  const response = await fetch('https://chat.openai.com/api/auth/session');
+  const response = await fetchWithRetry(
+    'https://chat.openai.com/api/auth/session'
+  );
   const data = await response.json();
   return data.accessToken;
 }
 
 export async function patchConversationTitle(conversationId, newTitle) {
   const authToken = await getAuthToken();
-  const response = await fetch(
+  const response = await fetchWithRetry(
     `https://chat.openai.com/backend-api/conversation/${conversationId}`,
     {
       headers: {
@@ -27,7 +53,7 @@ export async function patchConversationTitle(conversationId, newTitle) {
 
 export async function fetchConversationsWithinRange(offset = 0, limit = 20) {
   const authToken = await getAuthToken();
-  const response = await fetch(
+  const response = await fetchWithRetry(
     `https://chat.openai.com/backend-api/conversations?offset=${offset}&limit=${limit}`,
     {
       headers: {
@@ -72,7 +98,7 @@ export async function fetchAllConversations() {
 
 export async function fetchConversationContent(conversationId) {
   const authToken = await getAuthToken();
-  const response = await fetch(
+  const response = await fetchWithRetry(
     `https://chat.openai.com/backend-api/conversation/${conversationId}`,
     {
       headers: {
