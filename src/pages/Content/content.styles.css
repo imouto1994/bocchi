@@ -5,7 +5,7 @@
   z-index: 99;
 }
 
-.bocchi-floating-action-button {
+.bocchi-floating-action-button-circular {
   width: 48px;
   height: 48px;
   padding: 0;
@@ -13,6 +13,14 @@
   background-color: red;
   color: white;
   font-size: 28px;
+}
+
+.bocchi-floating-action-button-status {
+  padding: 4px 12px;
+  border-radius: 16px;
+  background-color: red;
+  color: white;
+  font-size: 12px;
 }
 
 .bocchi-tray {

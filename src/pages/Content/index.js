@@ -38,6 +38,17 @@ function getButton(text) {
   const thisButton = buttons.iterateNext();
   return thisButton;
 }
+function getButtonWithClass(text, className) {
+  const buttons = document.evaluate(
+    `//button[contains(., '${text}') and contains(@class, '${className}')]`,
+    document,
+    null,
+    XPathResult.ANY_TYPE,
+    null
+  );
+  const thisButton = buttons.iterateNext();
+  return thisButton;
+}
 
 function getLink(text) {
   const buttons = document.evaluate(
@@ -81,6 +92,10 @@ function getUseDefaultModelButton() {
 
 function getTryAgainButton() {
   return getButton('Try again');
+}
+
+function getPrimaryRegenerateButton() {
+  return getButtonWithClass('Regenerate response', 'btn-primary');
 }
 
 function getPendingButton() {
@@ -198,6 +213,22 @@ function waitTryAgainButtonAppear() {
   });
 }
 
+function waitPrimaryRegenerateButtonAppear() {
+  return new Promise((resolve) => {
+    if (getPrimaryRegenerateButton() != null) {
+      resolve('Primary Regenerate');
+      return;
+    }
+    let intervalId;
+    intervalId = setInterval(() => {
+      if (getPrimaryRegenerateButton() != null) {
+        clearInterval(intervalId);
+        resolve('Primary Regenerate');
+      }
+    }, 1000);
+  });
+}
+
 function waitPendingButtonAppear() {
   return new Promise((resolve) => {
     if (getPendingButton() != null) {
@@ -219,18 +250,30 @@ async function translateGroup(groupText) {
   setText(getTextInputElement(), groupText);
   await waitFor(3000);
   getSubmitButtonElement().click();
-  const raceResult = await Promise.race([
-    waitPendingButtonAppear(),
-    waitUseDefaultModelButtonAppear(),
-  ]);
-  if (raceResult === 'Pending') {
-    await waitPendingButtonDisappear();
-  } else {
-    await waitTryAgainButtonAppear();
-    await waitFor(60000);
-    getTryAgainButton().click();
-    await waitPendingButtonAppear();
-    await waitPendingButtonDisappear();
+  while (true) {
+    const raceResult = await Promise.race([
+      waitPendingButtonAppear(),
+      waitUseDefaultModelButtonAppear(),
+      waitPrimaryRegenerateButtonAppear(),
+    ]);
+    // Generated message is being sent
+    if (raceResult === 'Pending') {
+      await waitPendingButtonDisappear();
+      break;
+    }
+    // Message could not be generated
+    else if (raceResult === 'Primary Regenerate') {
+      // Wait for 5 mins before trying again
+      await waitFor(300000);
+      getPrimaryRegenerateButton().click();
+    }
+    // Quota limit is met. We will need to wait for cooldown
+    else {
+      await waitTryAgainButtonAppear();
+      // Wait for 5 mins after cooldown finishes before trying again
+      await waitFor(300000);
+      getTryAgainButton().click();
+    }
   }
 }
 
@@ -241,6 +284,7 @@ function useTranslate({
   addTranslateTimestamp,
   setChapterTranslated,
   setChapterUuid,
+  setStatus,
 }) {
   const segment = useCallback(
     (chapter) => {
@@ -285,9 +329,11 @@ function useTranslate({
       if (chapter.translated) {
         return;
       }
+
       const segmentedGroups = segment(chapter);
       let segmentStartIndex = 0;
       if (chapter.uuid == null) {
+        setStatus(`Opening new chat session for chapter '${chapter.title}'...`);
         getNewChatButton().click();
         await waitFor(3000);
         getModelDropdownButton().click();
@@ -295,6 +341,9 @@ function useTranslate({
         getGPT4Option().click();
         await waitFor(1000);
       } else {
+        setStatus(
+          `Finding existing chat session for chapter '${chapter.title}'...`
+        );
         while (getShowMoreButton() != null) {
           getShowMoreButton().click();
         }
@@ -309,10 +358,14 @@ function useTranslate({
       }
 
       for (let i = segmentStartIndex; i < segmentedGroups.length; i++) {
+        setStatus(
+          `Translating segment (${i + 1} / ${
+            segmentedGroups.length
+          }) for chapter '${chapter.title}'...`
+        );
         const isInitial = i === 0;
         const prompt = isInitial ? initialPrompt : followUpPrompt;
         const groupText = `${prompt}\n${segmentedGroups[i]}`;
-
         await translateGroup(groupText);
         if (isInitial && chapter.uuid == null) {
           const mostRecentConversation = await fetchMostRecentConversation();
@@ -326,6 +379,7 @@ function useTranslate({
         await waitFor(3000);
       }
       setChapterTranslated(chapter.id, true);
+      setStatus(null);
     },
     [
       initialPrompt,
@@ -334,6 +388,7 @@ function useTranslate({
       setChapterTranslated,
       segment,
       setChapterUuid,
+      setStatus,
     ]
   );
 
@@ -345,6 +400,7 @@ function useTranslate({
 
 function Main() {
   const [trayEnabled, setTrayEnabled] = useState(false);
+  const [status, setStatus] = useState(null);
   const { translateCount, refreshTimestamps, addTranslateTimestamp } = useLog();
   const {
     initialPrompt,
@@ -385,6 +441,7 @@ function Main() {
     addTranslateTimestamp,
     setChapterTranslated,
     setChapterUuid,
+    setStatus,
   });
 
   const selectedChapterSegmentedGroups = useMemo(() => {
@@ -436,9 +493,15 @@ function Main() {
 
   // Handler for clicking button to start translation queue
   const handleTranslateQueueButtonClick = useCallback(async () => {
-    for (const chapterId of sortedChapterIds) {
-      const chapter = chapterById[chapterId];
-      await translate(chapter);
+    setTrayEnabled(false);
+    try {
+      for (const chapterId of sortedChapterIds) {
+        const chapter = chapterById[chapterId];
+        await translate(chapter);
+      }
+    } catch (err) {
+      alert('Something went wrong! :(');
+      setStatus(null);
     }
   }, [sortedChapterIds, chapterById, translate]);
 
@@ -513,8 +576,14 @@ function Main() {
   }, [deleteChapter, selectedChapterId]);
 
   // Handler for clicking button to translate currently selected chapter
-  const handleTranslateChapterButtonClick = useCallback(() => {
-    translate(selectedChapter);
+  const handleTranslateChapterButtonClick = useCallback(async () => {
+    setTrayEnabled(false);
+    try {
+      await translate(selectedChapter);
+    } catch (err) {
+      alert('Something went wrong! :(');
+      setStatus(null);
+    }
   }, [translate, selectedChapter]);
 
   // Handler for changing the currently selected chapter
@@ -544,10 +613,14 @@ function Main() {
   return (
     <div className="bocchi">
       <button
-        className="bocchi-floating-action-button"
+        className={
+          status == null
+            ? 'bocchi-floating-action-button-circular'
+            : 'bocchi-floating-action-button-status'
+        }
         onClick={handleBocchiButtonClick}
       >
-        T
+        {status == null ? 'T' : status}
       </button>
       {trayEnabled ? (
         <div className="bocchi-tray">
