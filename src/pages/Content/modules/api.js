@@ -9,14 +9,14 @@ async function fetchWithRetry(url, options) {
     try {
       const response = await fetch(url, options);
       if (!response.ok) {
-        throw new Error('HTTP Error Status Code');
+        throw new Error(`HTTP Error Status Code: ${response.status}`);
       }
       return response;
     } catch (err) {
       if (i === 4) {
         throw err;
       } else {
-        await waitFor(5000);
+        await waitFor(30000 * (i + 1));
       }
     }
   }

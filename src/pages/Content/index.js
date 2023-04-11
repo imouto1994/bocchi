@@ -272,7 +272,7 @@ async function translateGroup(groupText) {
     else {
       await waitTryAgainButtonAppear();
       // Wait for 5 mins after cooldown finishes before trying again
-      await waitFor(300000);
+      await waitFor(150000);
       getTryAgainButton().click();
     }
   }
@@ -347,6 +347,7 @@ function useTranslate({
         );
         while (getShowMoreButton() != null) {
           getShowMoreButton().click();
+          await waitFor(5000);
         }
         const chapterLinkButton = getLink(chapter.title);
         chapterLinkButton.click();
@@ -504,6 +505,7 @@ function Main() {
         await translate(chapter);
       }
     } catch (err) {
+      console.log('[bocchi] UNEXPECTED ERROR', err);
       alert('Something went wrong! :(');
       setStatus(null);
     }
@@ -566,6 +568,7 @@ function Main() {
         title: file.name,
         content,
       });
+      await waitFor(1000);
     }
   }, [addNewChapter]);
 
@@ -585,6 +588,7 @@ function Main() {
     try {
       await translate(selectedChapter);
     } catch (err) {
+      console.log('[bocchi] UNEXPECTED ERROR', err);
       alert('Something went wrong! :(');
       setStatus(null);
     }
