@@ -284,8 +284,8 @@ async function translateGroup(groupText) {
   setText(getTextInputElement(), groupText);
   await waitFor(3000);
   getSubmitButtonElement().click();
-  await waitFor(5000);
   while (true) {
+    await waitFor(5000);
     const raceResult = await Promise.race([
       waitNormalRegenerateButtonAppear(),
       waitUseDefaultModelButtonAppear(),
