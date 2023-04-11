@@ -39,9 +39,22 @@ function getButton(text) {
   const thisButton = buttons.iterateNext();
   return thisButton;
 }
+
 function getButtonWithClass(text, className) {
   const buttons = document.evaluate(
     `//button[contains(., '${text}') and contains(@class, '${className}')]`,
+    document,
+    null,
+    XPathResult.ANY_TYPE,
+    null
+  );
+  const thisButton = buttons.iterateNext();
+  return thisButton;
+}
+
+function getButtonWithoutClass(text, className) {
+  const buttons = document.evaluate(
+    `//button[contains(., '${text}') and not(contains(@class, '${className}'))]`,
     document,
     null,
     XPathResult.ANY_TYPE,
@@ -97,6 +110,10 @@ function getTryAgainButton() {
 
 function getPrimaryRegenerateButton() {
   return getButtonWithClass('Regenerate response', 'btn-primary');
+}
+
+function getNormalRegenerateButton() {
+  return getButtonWithoutClass('Regenerate response', 'btn-primary');
 }
 
 function getPendingButton() {
@@ -214,6 +231,22 @@ function waitTryAgainButtonAppear() {
   });
 }
 
+function waitNormalRegenerateButtonAppear() {
+  return new Promise((resolve) => {
+    if (getNormalRegenerateButton() != null) {
+      resolve('Normal Regenerate');
+      return;
+    }
+    let intervalId;
+    intervalId = setInterval(() => {
+      if (getNormalRegenerateButton() != null) {
+        clearInterval(intervalId);
+        resolve('Normal Regenerate');
+      }
+    }, 1000);
+  });
+}
+
 function waitPrimaryRegenerateButtonAppear() {
   return new Promise((resolve) => {
     if (getPrimaryRegenerateButton() != null) {
@@ -251,28 +284,28 @@ async function translateGroup(groupText) {
   setText(getTextInputElement(), groupText);
   await waitFor(3000);
   getSubmitButtonElement().click();
+  await waitFor(5000);
   while (true) {
     const raceResult = await Promise.race([
-      waitPendingButtonAppear(),
+      waitNormalRegenerateButtonAppear(),
       waitUseDefaultModelButtonAppear(),
       waitPrimaryRegenerateButtonAppear(),
     ]);
     // Generated message is being sent
-    if (raceResult === 'Pending') {
-      await waitPendingButtonDisappear();
+    if (raceResult === 'Normal Regenerate') {
       break;
     }
     // Message could not be generated
     else if (raceResult === 'Primary Regenerate') {
-      // Wait for 5 mins before trying again
-      await waitFor(300000);
+      // Wait for 3 mins before trying again
+      await waitFor(180000);
       getPrimaryRegenerateButton().click();
     }
     // Quota limit is met. We will need to wait for cooldown
     else {
       await waitTryAgainButtonAppear();
       // Wait for 5 mins after cooldown finishes before trying again
-      await waitFor(150000);
+      await waitFor(300000);
       getTryAgainButton().click();
     }
   }
