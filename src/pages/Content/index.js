@@ -638,6 +638,11 @@ function Main() {
     deleteChapter(selectedChapterId);
   }, [deleteChapter, selectedChapterId]);
 
+  // Handler for clicking button to reset currently selected chapter
+  const handleResetChapterButtonClick = useCallback(() => {
+    setChapterTranslated(selectedChapterId, false);
+  }, [setChapterTranslated, selectedChapterId]);
+
   // Handler for clicking button to translate currently selected chapter
   const handleTranslateChapterButtonClick = useCallback(async () => {
     setTrayEnabled(false);
@@ -807,6 +812,12 @@ function Main() {
                   onClick={handleDeleteChapterButtonClick}
                 >
                   Delete chapter
+                </button>
+                <button
+                  className="bocchi-button"
+                  onClick={handleResetChapterButtonClick}
+                >
+                  Reset chapter
                 </button>
               </>
             ) : null}
