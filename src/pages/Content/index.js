@@ -366,7 +366,7 @@ function useTranslate({
 
       const segmentedGroups = segment(chapter);
       let segmentStartIndex = 0;
-      if (chapter.uuid == null) {
+      if (!chapter.uuid) {
         setStatus(`Opening new chat session for chapter '${chapter.title}'...`);
         getNewChatButton().click();
         await waitFor(3000);
