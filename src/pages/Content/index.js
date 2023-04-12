@@ -643,6 +643,14 @@ function Main() {
     [selectedChapterId, setChapterTitle]
   );
 
+  // Handler for changing the uuid of currently selected chapter
+  const handleChapterUuidInputChange = useCallback(
+    (e) => {
+      setChapterUuid(selectedChapterId, e.target.value);
+    },
+    [selectedChapterId, setChapterUuid]
+  );
+
   // Handler for changing the content of currently selected chapter
   const handleChapterContentInputChange = useCallback(
     (e) => {
@@ -744,7 +752,7 @@ function Main() {
                 <Input
                   className="bocchi-input"
                   value={selectedChapter.uuid}
-                  disabled
+                  onChange={handleChapterUuidInputChange}
                 />
                 <p>Title</p>
                 <Input
