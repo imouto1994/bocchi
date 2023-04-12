@@ -40,6 +40,18 @@ function getButton(text) {
   return thisButton;
 }
 
+function getButtonContainingStrings(text1, text2) {
+  const buttons = document.evaluate(
+    `//button[contains(., '${text1}') and contains(., '${text2}')]`,
+    document,
+    null,
+    XPathResult.ANY_TYPE,
+    null
+  );
+  const thisButton = buttons.iterateNext();
+  return thisButton;
+}
+
 function getButtonWithClass(text, className) {
   const buttons = document.evaluate(
     `//button[contains(., '${text}') and contains(@class, '${className}')]`,
@@ -90,6 +102,10 @@ function getListItem(text) {
 
 function getModelDropdownButton() {
   return getButton('Model');
+}
+
+function getModelDropdownButtonForGPT4() {
+  return getButtonContainingStrings('Model', 'GPT-4');
 }
 
 function getNewChatButton() {
@@ -370,10 +386,17 @@ function useTranslate({
         setStatus(`Opening new chat session for chapter '${chapter.title}'...`);
         getNewChatButton().click();
         await waitFor(3000);
-        getModelDropdownButton().click();
-        await waitFor(1000);
-        getGPT4Option().click();
-        await waitFor(1000);
+        while (true) {
+          getModelDropdownButton().click();
+          await waitFor(1000);
+          getGPT4Option().click();
+          await waitFor(3000);
+          if (getModelDropdownButtonForGPT4() == null) {
+            await waitFor(60000);
+          } else {
+            break;
+          }
+        }
       } else {
         setStatus(
           `Finding existing chat session for chapter '${chapter.title}'...`
