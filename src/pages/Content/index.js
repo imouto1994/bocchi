@@ -1,4 +1,10 @@
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, {
+  useState,
+  useMemo,
+  useCallback,
+  useEffect,
+  Fragment,
+} from 'react';
 import ReactDOM from 'react-dom';
 
 import { Input } from './Input';
@@ -38,6 +44,10 @@ function getButton(text) {
   );
   const thisButton = buttons.iterateNext();
   return thisButton;
+}
+
+function getResultStreamingNode() {
+  return document.querySelector('.result-streaming');
 }
 
 function getButtonContainingStrings(text1, text2) {
@@ -335,6 +345,7 @@ function useTranslate({
   setChapterTranslated,
   setChapterUuid,
   setStatus,
+  setChapterTranslatedSegment,
 }) {
   const segment = useCallback(
     (chapter) => {
@@ -427,7 +438,34 @@ function useTranslate({
           '{segmentNumber}',
           getOrdinalNumberString(i + 1)
         )}\n${segmentedGroups[i]}`;
-        await translateGroup(groupText);
+        let translatedContent = '';
+        let observer;
+        const refreshContentIntervalId = setInterval(() => {
+          const targetNode = getResultStreamingNode();
+          if (targetNode != null) {
+            const config = {
+              characterData: true,
+              attributes: true,
+              childList: true,
+              subtree: true,
+            };
+            const callback = (mutationList, observer) => {
+              translatedContent = targetNode.innerHTML;
+            };
+
+            observer = new MutationObserver(callback);
+            observer.observe(targetNode, config);
+
+            clearInterval(refreshContentIntervalId);
+          }
+        }, 300);
+
+        await translateGroup(groupText, setChapterTranslatedSegment);
+        if (observer != null) {
+          observer.disconnect();
+        }
+        setChapterTranslatedSegment(chapter.id, i, translatedContent);
+
         if (isInitial && chapter.uuid == null) {
           const mostRecentConversation = await fetchMostRecentConversation();
           setChapterUuid(chapter.id, mostRecentConversation.id);
@@ -449,6 +487,7 @@ function useTranslate({
       setChapterTranslated,
       segment,
       setChapterUuid,
+      setChapterTranslatedSegment,
       setStatus,
     ]
   );
@@ -482,6 +521,7 @@ function Main() {
     setChapterContent,
     setChapterTranslated,
     setChapterUuid,
+    setChapterTranslatedSegment,
   } = useChapters();
   const [selectedChapterId, setSelectedChapterId] = useState(
     mostRecentlyUpdatedChapterId
@@ -503,6 +543,7 @@ function Main() {
     setChapterTranslated,
     setChapterUuid,
     setStatus,
+    setChapterTranslatedSegment,
   });
 
   const selectedChapterSegmentedGroups = useMemo(() => {
@@ -787,6 +828,7 @@ function Main() {
                   className="bocchi-input"
                   value={selectedChapter.title}
                   onChange={handleChapterTitleInputChange}
+                  disabled
                 />
                 <p>Content</p>
                 <Textarea
@@ -794,6 +836,7 @@ function Main() {
                   value={selectedChapter.content}
                   onChange={handleChapterContentInputChange}
                   rows={10}
+                  disabled
                 />
                 {!selectedChapter.translated ? (
                   <button
@@ -819,6 +862,17 @@ function Main() {
                 >
                   Reset chapter
                 </button>
+                {selectedChapter.translatedSegments.map((segment, index) => (
+                  <Fragment key={index}>
+                    <p>{`Segment ${index + 1}`}</p>
+                    <Textarea
+                      className="bocchi-textarea"
+                      value={segment}
+                      rows={10}
+                      disabled
+                    />
+                  </Fragment>
+                ))}
               </>
             ) : null}
           </div>

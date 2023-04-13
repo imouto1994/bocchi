@@ -51,6 +51,7 @@ export function useChapters() {
           uuid: null,
           title: `${title || 'New Chapter'} [${id}]`,
           content: content || '',
+          translatedSegments: [],
           translated: false,
           updatedAt: Date.now(),
         };
@@ -190,6 +191,33 @@ export function useChapters() {
     },
     [setStore]
   );
+  const setChapterTranslatedSegment = useCallback(
+    (chapterId, segmentIndex, translatedContent) => {
+      setStore((prev) => {
+        const prevChapterById = JSON.parse(prev.chaptersJSON);
+        const chapter = prevChapterById[chapterId];
+        if (chapter == null) {
+          return prev;
+        }
+        const copiedTranslatedSegments = [...chapter.translatedSegments];
+        copiedTranslatedSegments[segmentIndex] = translatedContent;
+        const newChapter = {
+          ...chapter,
+          translatedSegments: copiedTranslatedSegments,
+        };
+        const newChapterById = {
+          ...prevChapterById,
+          [newChapter.id]: newChapter,
+        };
+
+        return {
+          ...prev,
+          chaptersJSON: JSON.stringify(newChapterById),
+        };
+      });
+    },
+    [setStore]
+  );
 
   return {
     chapterById,
@@ -202,5 +230,6 @@ export function useChapters() {
     setChapterContent,
     setChapterTranslated,
     setChapterUuid,
+    setChapterTranslatedSegment,
   };
 }
