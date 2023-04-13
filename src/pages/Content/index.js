@@ -312,14 +312,39 @@ async function translateGroup(groupText) {
   getSubmitButtonElement().click();
   while (true) {
     await waitFor(5000);
+    let translatedContent = '';
+    let observer;
+    const refreshContentIntervalId = setInterval(() => {
+      const targetNode = getResultStreamingNode();
+      if (targetNode != null) {
+        const config = {
+          characterData: true,
+          attributes: true,
+          childList: true,
+          subtree: true,
+        };
+        const callback = (mutationList, observer) => {
+          translatedContent = targetNode.innerHTML;
+        };
+
+        observer = new MutationObserver(callback);
+        observer.observe(targetNode, config);
+
+        clearInterval(refreshContentIntervalId);
+      }
+    }, 300);
     const raceResult = await Promise.race([
       waitNormalRegenerateButtonAppear(),
       waitUseDefaultModelButtonAppear(),
       waitPrimaryRegenerateButtonAppear(),
     ]);
+    if (observer != null) {
+      observer.disconnect();
+    }
+    clearInterval(refreshContentIntervalId);
     // Generated message is being sent
     if (raceResult === 'Normal Regenerate') {
-      break;
+      return translatedContent;
     }
     // Message could not be generated
     else if (raceResult === 'Primary Regenerate') {
@@ -438,32 +463,12 @@ function useTranslate({
           '{segmentNumber}',
           getOrdinalNumberString(i + 1)
         )}\n${segmentedGroups[i]}`;
-        let translatedContent = '';
-        let observer;
-        const refreshContentIntervalId = setInterval(() => {
-          const targetNode = getResultStreamingNode();
-          if (targetNode != null) {
-            const config = {
-              characterData: true,
-              attributes: true,
-              childList: true,
-              subtree: true,
-            };
-            const callback = (mutationList, observer) => {
-              translatedContent = targetNode.innerHTML;
-            };
 
-            observer = new MutationObserver(callback);
-            observer.observe(targetNode, config);
+        const translatedContent = await translateGroup(
+          groupText,
+          setChapterTranslatedSegment
+        );
 
-            clearInterval(refreshContentIntervalId);
-          }
-        }, 300);
-
-        await translateGroup(groupText, setChapterTranslatedSegment);
-        if (observer != null) {
-          observer.disconnect();
-        }
         setChapterTranslatedSegment(chapter.id, i, translatedContent);
 
         if (isInitial && chapter.uuid == null) {
