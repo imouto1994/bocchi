@@ -3,6 +3,7 @@ import React, {
   useMemo,
   useCallback,
   useEffect,
+  useRef,
   Fragment,
 } from 'react';
 import ReactDOM from 'react-dom';
@@ -350,14 +351,14 @@ async function translateGroup(groupText) {
     else if (raceResult === 'Primary Regenerate') {
       // Wait for 3 mins before trying again
       await waitFor(180000);
-      getPrimaryRegenerateButton().click();
+      location.reload(); // eslint-disable-line no-restricted-globals
     }
     // Quota limit is met. We will need to wait for cooldown
     else {
       await waitTryAgainButtonAppear();
       // Wait for 5 mins after cooldown finishes before trying again
       await waitFor(300000);
-      getTryAgainButton().click();
+      location.reload(); // eslint-disable-line no-restricted-globals
     }
   }
 }
@@ -506,14 +507,17 @@ function useTranslate({
 function Main() {
   const [trayEnabled, setTrayEnabled] = useState(false);
   const [status, setStatus] = useState(null);
+  const isRunningQueueRef = useRef(false);
   const { translateCount, refreshTimestamps, addTranslateTimestamp } = useLog();
   const {
     initialPrompt,
     followUpPrompt,
     groupCharLimitStr,
+    isInQueue,
     setInitialPrompt,
     setFollowUpPrompt,
     setGroupCharLimitStr,
+    setIsInQueue,
   } = useSettings();
   const {
     chapterById,
@@ -569,6 +573,37 @@ function Main() {
     };
   }, [refreshTimestamps]);
 
+  useEffect(() => {
+    async function queue() {
+      await waitFor(10000);
+      try {
+        for (const chapterId of sortedChapterIds) {
+          const chapter = chapterById[chapterId];
+          await translate(chapter);
+        }
+      } catch (err) {
+        console.log('[bocchi] UNEXPECTED ERROR', err);
+        alert('Something went wrong! :(');
+        setStatus(null);
+      }
+    }
+    if (isInQueue == null) {
+      return;
+    }
+
+    if (isInQueue) {
+      if (!isRunningQueueRef.current && sortedChapterIds.length > 0) {
+        queue();
+        isRunningQueueRef.current = true;
+      }
+    } else {
+      if (isRunningQueueRef.current) {
+        isRunningQueueRef.current = false;
+        location.reload(); // eslint-disable-line no-restricted-globals
+      }
+    }
+  }, [isInQueue, sortedChapterIds, chapterById, translate]);
+
   // Handler for clicking floating action button to toggle tray
   const handleBocchiButtonClick = useCallback(() => {
     setTrayEnabled((flag) => !flag);
@@ -601,17 +636,14 @@ function Main() {
   // Handler for clicking button to start translation queue
   const handleTranslateQueueButtonClick = useCallback(async () => {
     setTrayEnabled(false);
-    try {
-      for (const chapterId of sortedChapterIds) {
-        const chapter = chapterById[chapterId];
-        await translate(chapter);
-      }
-    } catch (err) {
-      console.log('[bocchi] UNEXPECTED ERROR', err);
-      alert('Something went wrong! :(');
-      setStatus(null);
-    }
-  }, [sortedChapterIds, chapterById, translate]);
+    setIsInQueue(true);
+  }, [setIsInQueue]);
+
+  // Handler for clicking button to stop translation quque
+  const handleStopTranslateQueueButtonClick = useCallback(async () => {
+    setTrayEnabled(false);
+    setIsInQueue(false);
+  }, [setIsInQueue]);
 
   // Handler for clicking button to add a new chapter
   const handleAddNewChapterButtonClick = useCallback(() => {
@@ -772,12 +804,22 @@ function Main() {
               value={groupCharLimitStr}
               onChange={handleGroupCharLimitInputChange}
             />
-            <button
-              className="bocchi-button bocchi-button-primary"
-              onClick={handleTranslateQueueButtonClick}
-            >
-              Start translate queue
-            </button>
+            {!isInQueue && (
+              <button
+                className="bocchi-button bocchi-button-primary"
+                onClick={handleTranslateQueueButtonClick}
+              >
+                Start translate queue
+              </button>
+            )}
+            {isInQueue && (
+              <button
+                className="bocchi-button bocchi-button-primary"
+                onClick={handleStopTranslateQueueButtonClick}
+              >
+                Stop translate queue
+              </button>
+            )}
             <button
               className="bocchi-button bocchi-button-secondary"
               onClick={handleAddNewChapterButtonClick}

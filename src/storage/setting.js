@@ -6,6 +6,7 @@ const INITIAL_VALUE = {
   initialPrompt: '',
   followUpPrompt: '',
   groupCharLimitStr: '600',
+  isInQueue: null,
 };
 
 const useSettingsStore = createChromeStorageStateHookLocal(
@@ -14,8 +15,10 @@ const useSettingsStore = createChromeStorageStateHookLocal(
 );
 
 export function useSettings() {
-  const [{ initialPrompt, followUpPrompt, groupCharLimitStr }, setStore] =
-    useSettingsStore();
+  const [
+    { initialPrompt, followUpPrompt, groupCharLimitStr, isInQueue },
+    setStore,
+  ] = useSettingsStore();
   const setInitialPrompt = useCallback(
     (newPrompt) => {
       setStore((prev) => ({
@@ -43,13 +46,24 @@ export function useSettings() {
     },
     [setStore]
   );
+  const setIsInQueue = useCallback(
+    (newFlag) => {
+      setStore((prev) => ({
+        ...prev,
+        isInQueue: newFlag,
+      }));
+    },
+    [setStore]
+  );
 
   return {
     initialPrompt,
     followUpPrompt,
     groupCharLimitStr,
+    isInQueue,
     setInitialPrompt,
     setFollowUpPrompt,
     setGroupCharLimitStr,
+    setIsInQueue,
   };
 }
