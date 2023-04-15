@@ -430,6 +430,8 @@ function useTranslate({
           await waitFor(3000);
           if (getModelDropdownButtonForGPT4() == null) {
             await waitFor(60000);
+            location.reload(); // eslint-disable-line no-restricted-globals
+            break;
           } else {
             break;
           }
