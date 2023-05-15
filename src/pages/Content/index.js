@@ -23,7 +23,7 @@ import { getOrdinalNumberString } from '../../utils/string';
 
 function getTextInputElement() {
   const textInputElement = document.querySelector(
-    'textarea[placeholder="Send a message..."]'
+    'textarea[placeholder="Send a message."]'
   );
   if (textInputElement == null) {
     console.error('Text input element not found!');
@@ -149,6 +149,10 @@ function getPendingButton() {
 
 function getGPT4Option() {
   return getListItem('GPT-4');
+}
+
+function getGPT4Button() {
+  return getButton('GPT-4');
 }
 
 function parseEntries(conversationContent) {
@@ -351,7 +355,7 @@ async function translateGroup(groupText) {
     else if (raceResult === 'Primary Regenerate') {
       // Wait for 3 mins before trying again
       await waitFor(180000);
-      location.reload(); // eslint-disable-line no-restricted-globals
+      getPrimaryRegenerateButton().click();
     }
     // Quota limit is met. We will need to wait for cooldown
     else {
@@ -423,19 +427,21 @@ function useTranslate({
         setStatus(`Opening new chat session for chapter '${chapter.title}'...`);
         getNewChatButton().click();
         await waitFor(3000);
-        while (true) {
-          getModelDropdownButton().click();
-          await waitFor(1000);
-          getGPT4Option().click();
-          await waitFor(3000);
-          if (getModelDropdownButtonForGPT4() == null) {
-            await waitFor(60000);
-            location.reload(); // eslint-disable-line no-restricted-globals
-            break;
-          } else {
-            break;
-          }
-        }
+        getGPT4Button().firstChild.click();
+        await waitFor(5000);
+        // while (true) {
+        //   getModelDropdownButton().click();
+        //   await waitFor(1000);
+        //   getGPT4Option().click();
+        //   await waitFor(3000);
+        //   if (getModelDropdownButtonForGPT4() == null) {
+        //     await waitFor(60000);
+        //     location.reload(); // eslint-disable-line no-restricted-globals
+        //     break;
+        //   } else {
+        //     break;
+        //   }
+        // }
       } else {
         setStatus(
           `Finding existing chat session for chapter '${chapter.title}'...`
